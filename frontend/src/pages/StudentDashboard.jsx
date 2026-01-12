@@ -1,4 +1,11 @@
+/**
+ * Student Dashboard Component
+ * Displays available sessions and student's requests
+ * Modern design with status badges and file upload
+ */
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   getStudentSessions,
   submitRequest,
@@ -11,9 +18,13 @@ export default function StudentDashboard() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("sessions");
+  const [activeTab, setActiveTab] = useState("requests");
   const [submitModal, setSubmitModal] = useState(null);
   const [dissertationTitle, setDissertationTitle] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchData();
@@ -35,172 +46,304 @@ export default function StudentDashboard() {
     }
   };
 
-  const handleSubmitRequest = async (sessionId) => {
+  const handleSubmitRequest = async () => {
+    if (!submitModal) return;
+    
     try {
-      await submitRequest(sessionId, dissertationTitle);
+      setSubmitting(true);
+      await submitRequest(submitModal, dissertationTitle);
       setSubmitModal(null);
       setDissertationTitle("");
       fetchData();
-      alert("Request submitted successfully!");
     } catch (err) {
-      alert("Error: " + err.message);
+      alert("Eroare: " + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (loading)
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  const hasApprovedRequest = requests.some((r) => r.status === "approved");
+
+  if (loading) {
     return (
-      <div className="loading">
-        <div className="spinner"></div>
+      <div className="dashboard-layout">
+        <div className="loading">
+          <div className="spinner"></div>
+        </div>
       </div>
     );
+  }
 
   return (
-    <div className="dashboard">
-      <div className="container">
-        <h1>Student Dashboard</h1>
+    <div className="dashboard-layout">
+      {/* Header */}
+      <header className="dashboard-header">
+        <div className="dashboard-header-content">
+          <div className="dashboard-header-left">
+            <h1>Dashboard Student</h1>
+            <p>{user?.firstName} {user?.lastName}</p>
+          </div>
+          <div className="dashboard-header-right">
+            <button className="logout-btn" onClick={handleLogout}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
+      </header>
 
+      <main className="dashboard-main">
         {error && <div className="alert alert-error">{error}</div>}
 
-        <div className="dashboard-tabs">
-          <button
-            className={`tab-button ${activeTab === "sessions" ? "active" : ""}`}
-            onClick={() => setActiveTab("sessions")}
-          >
-            Available Sessions
-          </button>
+        {/* Success Alert */}
+        {hasApprovedRequest && (
+          <div className="alert-banner success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <p>Ai fost acceptat la disertație! Celelalte cereri au fost blocate automat.</p>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="tabs">
           <button
             className={`tab-button ${activeTab === "requests" ? "active" : ""}`}
             onClick={() => setActiveTab("requests")}
           >
-            My Requests
+            Cererile mele
+          </button>
+          <button
+            className={`tab-button ${activeTab === "sessions" ? "active" : ""}`}
+            onClick={() => setActiveTab("sessions")}
+          >
+            Sesiuni disponibile
           </button>
         </div>
 
-        {activeTab === "sessions" && (
-          <div className="tab-content">
-            <div className="grid">
-              {sessions.map((session) => (
-                <div key={session.id} className="card">
-                  <div className="card-header">
-                    <h3>{session.title}</h3>
-                  </div>
-                  <div className="card-body">
-                    <p>
-                      <strong>Professor:</strong> {session.professor.firstName}{" "}
-                      {session.professor.lastName}
-                    </p>
-                    <p>
-                      <strong>Email:</strong> {session.professor.email}
-                    </p>
-                    <p>
-                      <strong>Max Students:</strong> {session.maxStudents}
-                    </p>
-                    <p>
-                      <strong>Available Slots:</strong> {session.availableSlots}
-                    </p>
-                    <p>
-                      <strong>Period:</strong>{" "}
-                      {new Date(session.startDate).toLocaleDateString()} -{" "}
-                      {new Date(session.endDate).toLocaleDateString()}
-                    </p>
-                    {session.description && (
-                      <p>
-                        <strong>Description:</strong> {session.description}
-                      </p>
-                    )}
-
-                    {session.studentRequestStatus ? (
-                      <div
-                        className={`status-badge ${session.studentRequestStatus}`}
-                      >
-                        Status: {session.studentRequestStatus.toUpperCase()}
-                      </div>
-                    ) : (
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => setSubmitModal(session.id)}
-                        disabled={session.availableSlots <= 0}
-                      >
-                        {session.availableSlots <= 0
-                          ? "Session Full"
-                          : "Submit Request"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {sessions.length === 0 && (
-              <p className="text-center">No available sessions at the moment</p>
-            )}
-          </div>
-        )}
-
+        {/* My Requests Tab */}
         {activeTab === "requests" && (
-          <div className="tab-content">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Professor</th>
-                  <th>Session</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="section-card">
+            <div className="section-header">
+              <h2>Cererile mele</h2>
+            </div>
+
+            {requests.length === 0 ? (
+              <div className="empty-state">
+                <p>Nu ai trimis încă nicio cerere</p>
+              </div>
+            ) : (
+              <div className="item-list">
                 {requests.map((request) => (
-                  <tr key={request.id}>
-                    <td>
-                      {request.professor.firstName} {request.professor.lastName}
-                    </td>
-                    <td>{request.session.title}</td>
-                    <td>
-                      <span className={`status-badge ${request.status}`}>
-                        {request.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td>{new Date(request.createdAt).toLocaleDateString()}</td>
-                  </tr>
+                  <div key={request.id} className="item-card">
+                    <div className="item-card-header">
+                      <div className="item-card-info">
+                        <h3>
+                          {request.professor.firstName} {request.professor.lastName}
+                        </h3>
+                        <p className="email">{request.professor.email}</p>
+                        {request.dissertationTitle && (
+                          <p className="message">"{request.dissertationTitle}"</p>
+                        )}
+                        <p className="date">
+                          Trimisă la {new Date(request.createdAt).toLocaleDateString("ro-RO")}
+                        </p>
+                      </div>
+                      <div>
+                        {request.status === "pending" && (
+                          <span className="status-badge pending">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            În așteptare
+                          </span>
+                        )}
+                        {request.status === "approved" && (
+                          <span className="status-badge approved">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                              <polyline points="22 4 12 14.01 9 11.01" />
+                            </svg>
+                            Aprobată
+                          </span>
+                        )}
+                        {request.status === "rejected" && (
+                          <span className="status-badge rejected">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="15" y1="9" x2="9" y2="15" />
+                              <line x1="9" y1="9" x2="15" y2="15" />
+                            </svg>
+                            Respinsă
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Rejection reason */}
+                    {request.status === "rejected" && request.rejectionReason && (
+                      <div className="rejection-box">
+                        <p>
+                          <strong>Motiv respingere:</strong> {request.rejectionReason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* File upload for approved requests */}
+                    {request.status === "approved" && !request.signedCoordinationRequestFile && (
+                      <div className="file-upload">
+                        <label>Încarcă cererea semnată (PDF)</label>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          onChange={(e) => {
+                            console.log("File selected:", e.target.files?.[0]);
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {request.signedCoordinationRequestFile && (
+                      <div className="file-uploaded">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        Fișier încărcat
+                      </div>
+                    )}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-            {requests.length === 0 && (
-              <p className="text-center">No requests yet</p>
+              </div>
             )}
           </div>
         )}
 
+        {/* Available Sessions Tab */}
+        {activeTab === "sessions" && (
+          <div className="section-card">
+            <div className="section-header">
+              <h2>Sesiuni disponibile</h2>
+            </div>
+
+            {sessions.length === 0 ? (
+              <div className="empty-state">
+                <p>Nu există sesiuni active momentan</p>
+              </div>
+            ) : (
+              <div className="session-grid">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className="session-card"
+                    onClick={() => !hasApprovedRequest && !session.studentRequestStatus && setSubmitModal(session.id)}
+                  >
+                    <h3>{session.title}</h3>
+                    <p className="professor">
+                      Profesor: {session.professor.firstName} {session.professor.lastName}
+                    </p>
+                    <p className="text-sm text-muted">
+                      {new Date(session.startDate).toLocaleDateString("ro-RO")} - {new Date(session.endDate).toLocaleDateString("ro-RO")}
+                    </p>
+                    <div className="session-card-footer">
+                      <span className="slots">
+                        Locuri: {session.approvedCount}/{session.maxStudents}
+                      </span>
+                      {session.studentRequestStatus ? (
+                        <span className={`status-badge ${session.studentRequestStatus}`}>
+                          {session.studentRequestStatus === "pending" && "În așteptare"}
+                          {session.studentRequestStatus === "approved" && "Aprobată"}
+                          {session.studentRequestStatus === "rejected" && "Respinsă"}
+                        </span>
+                      ) : (
+                        !hasApprovedRequest && session.availableSlots > 0 && (
+                          <button
+                            className="apply-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSubmitModal(session.id);
+                            }}
+                          >
+                            Aplică
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Submit Request Modal */}
         {submitModal && (
           <div className="modal-overlay" onClick={() => setSubmitModal(null)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <h2>Submit Dissertation Request</h2>
+              <h3>Trimite cerere preliminară</h3>
+              
+              <div className="modal-info">
+                {sessions.find((s) => s.id === submitModal) && (
+                  <>
+                    <p>
+                      <strong>Sesiune:</strong> {sessions.find((s) => s.id === submitModal).title}
+                    </p>
+                    <p>
+                      <strong>Profesor:</strong>{" "}
+                      {sessions.find((s) => s.id === submitModal).professor.firstName}{" "}
+                      {sessions.find((s) => s.id === submitModal).professor.lastName}
+                    </p>
+                  </>
+                )}
+              </div>
+
               <div className="form-group">
-                <label>Dissertation Title</label>
-                <input
-                  type="text"
+                <label htmlFor="dissertationTitle">Titlu disertație (opțional)</label>
+                <textarea
+                  id="dissertationTitle"
                   value={dissertationTitle}
                   onChange={(e) => setDissertationTitle(e.target.value)}
-                  placeholder="Enter your dissertation title"
+                  placeholder="Introdu titlul propus pentru disertație..."
+                  rows={3}
+                  style={{ resize: "none" }}
                 />
               </div>
-              <div className="modal-buttons">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handleSubmitRequest(submitModal)}
-                >
-                  Submit
-                </button>
+
+              <div className="modal-actions">
                 <button
                   className="btn btn-secondary"
-                  onClick={() => setSubmitModal(null)}
+                  onClick={() => {
+                    setSubmitModal(null);
+                    setDissertationTitle("");
+                  }}
                 >
-                  Cancel
+                  Anulează
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmitRequest}
+                  disabled={submitting}
+                >
+                  {submitting ? "Se trimite..." : "Trimite cerere"}
                 </button>
               </div>
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

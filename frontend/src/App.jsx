@@ -1,3 +1,7 @@
+/**
+ * Main App Component
+ * Handles routing and authentication context
+ */
 import {
   BrowserRouter as Router,
   Routes,
@@ -5,12 +9,10 @@ import {
   Navigate,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
-import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Pages
-import Login from "./pages/Login";
-import Register from "./pages/Register";
+import Auth from "./pages/Auth";
 import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorDashboard from "./pages/ProfessorDashboard";
 
@@ -21,13 +23,12 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <Navbar />
         <Routes>
-          {/* Auth Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          {/* Auth Route - Combined Login/Register */}
+          <Route path="/login" element={<Auth />} />
+          <Route path="/register" element={<Auth />} />
 
-          {/* Protected Routes */}
+          {/* Protected Routes - Dashboards have their own headers */}
           <Route
             path="/student/dashboard"
             element={
