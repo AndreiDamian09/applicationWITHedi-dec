@@ -1,19 +1,54 @@
-// server/index.js
+/**
+ * Main Server File
+ * Initializes Express app, connects to database, and sets up routes
+ */
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+const { sequelize } = require("./models");
+const { PORT } = require("./config/config");
+
+// Import routes
+const authRoutes = require("./routes/auth");
+const professorRoutes = require("./routes/professor");
+const studentRoutes = require("./routes/student");
+
 const app = express();
 
 // Middleware
-app.use(cors()); // Permite frontend-ului să facă request-uri
-app.use(express.json()); // Permite citirea datelor JSON
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Ruta de test
+// Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/professor", professorRoutes);
+app.use("/api/student", studentRoutes);
+
+// Health check route
 app.get("/", (req, res) => {
-  res.send({ message: "Serverul functioneaza!" });
+  res.json({ message: "Dissertation Registration API is running" });
 });
 
-// Pornire server
-const PORT = 8080;
-app.listen(PORT, () => {
-  console.log(`Serverul ruleaza pe portul ${PORT}`);
-});
+// Initialize database and start server
+const startServer = async () => {
+  try {
+    // Sync database
+    await sequelize.sync({ alter: true });
+    console.log("Database synchronized");
+
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+};
+
+startServer();
