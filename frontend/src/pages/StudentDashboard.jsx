@@ -10,8 +10,12 @@ import {
   getStudentSessions,
   submitRequest,
   getStudentRequests,
+  uploadSignedFile,
+  getFileUrl,
+  getTemplateUrl,
 } from "../utils/api";
 import "../styles/dashboard.css";
+import LogoASE from "../assets/Logo_ASE.png";
 
 export default function StudentDashboard() {
   const [sessions, setSessions] = useState([]);
@@ -22,6 +26,7 @@ export default function StudentDashboard() {
   const [submitModal, setSubmitModal] = useState(null);
   const [dissertationTitle, setDissertationTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(null);
   
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -67,6 +72,20 @@ export default function StudentDashboard() {
     navigate("/login");
   };
 
+  const handleFileUpload = async (requestId, file) => {
+    if (!file) return;
+    
+    try {
+      setUploadingFile(requestId);
+      await uploadSignedFile(requestId, file);
+      fetchData();
+    } catch (err) {
+      alert("Eroare la încărcarea fișierului: " + err.message);
+    } finally {
+      setUploadingFile(null);
+    }
+  };
+
   const hasApprovedRequest = requests.some((r) => r.status === "approved");
 
   if (loading) {
@@ -85,8 +104,11 @@ export default function StudentDashboard() {
       <header className="dashboard-header">
         <div className="dashboard-header-content">
           <div className="dashboard-header-left">
-            <h1>Dashboard Student</h1>
-            <p>{user?.firstName} {user?.lastName}</p>
+            <img src={LogoASE} alt="Logo ASE" className="header-logo" />
+            <div>
+              <h1>Dashboard Student</h1>
+              <p>{user?.firstName} {user?.lastName}</p>
+            </div>
           </div>
           <div className="dashboard-header-right">
             <button className="logout-btn" onClick={handleLogout}>
@@ -188,6 +210,16 @@ export default function StudentDashboard() {
                             Respinsă
                           </span>
                         )}
+                        {request.status === "waiting_for_reupload" && (
+                          <span className="status-badge warning">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                            Reupload necesar
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -200,17 +232,49 @@ export default function StudentDashboard() {
                       </div>
                     )}
 
-                    {/* File upload for approved requests */}
-                    {request.status === "approved" && !request.signedCoordinationRequestFile && (
-                      <div className="file-upload">
-                        <label>Încarcă cererea semnată (PDF)</label>
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          onChange={(e) => {
-                            console.log("File selected:", e.target.files?.[0]);
-                          }}
-                        />
+                    {/* Reupload reason */}
+                    {request.status === "waiting_for_reupload" && request.reuploadReason && (
+                      <div className="rejection-box warning">
+                        <p>
+                          <strong>Motiv reupload:</strong> {request.reuploadReason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* File upload for approved or waiting_for_reupload requests */}
+                    {(request.status === "approved" || request.status === "waiting_for_reupload") && !request.signedCoordinationRequestFile && (
+                      <div className="file-upload-section">
+                        <div className="template-download">
+                          <a 
+                            href={getTemplateUrl()} 
+                            download="cerere-coordonare.pdf" 
+                            className="btn btn-outline btn-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            Descarcă formularul
+                          </a>
+                        </div>
+                        <div className="file-upload">
+                          <label>Încarcă cererea semnată (PDF)</label>
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            disabled={uploadingFile === request.id}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleFileUpload(request.id, file);
+                              }
+                            }}
+                          />
+                          {uploadingFile === request.id && (
+                            <span className="uploading">Se încarcă...</span>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -222,7 +286,22 @@ export default function StudentDashboard() {
                           <line x1="16" y1="13" x2="8" y2="13" />
                           <line x1="16" y1="17" x2="8" y2="17" />
                         </svg>
-                        Fișier încărcat
+                        <a href={getFileUrl(request.signedCoordinationRequestFile)} target="_blank" rel="noopener noreferrer">
+                          Cerere semnată
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Professor response file */}
+                    {request.professorReviewFile && (
+                      <div className="file-uploaded professor-file">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <a href={getFileUrl(request.professorReviewFile)} target="_blank" rel="noopener noreferrer">
+                          Răspuns profesor
+                        </a>
                       </div>
                     )}
                   </div>
@@ -344,6 +423,11 @@ export default function StudentDashboard() {
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <footer className="dashboard-footer">
+        <p>© 2026 Toate drepturile rezervate - Chisega Eduard și Buzatoiu Andrei</p>
+      </footer>
     </div>
   );
 }

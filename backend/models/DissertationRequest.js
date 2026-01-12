@@ -40,10 +40,16 @@ module.exports = (sequelize) => {
         },
       },
       status: {
-        type: DataTypes.ENUM("pending", "approved", "rejected"),
+        // Status workflow: pending -> approved/rejected -> waiting_for_reupload (if professor requests reupload)
+        type: DataTypes.ENUM("pending", "approved", "rejected", "waiting_for_reupload"),
         defaultValue: "pending",
       },
       rejectionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      reuploadReason: {
+        // Reason provided by professor when requesting file reupload
         type: DataTypes.TEXT,
         allowNull: true,
       },

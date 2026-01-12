@@ -9,11 +9,17 @@ import { useAuth } from "../context/AuthContext";
 import {
   getProfessorSessions,
   createSession,
+  updateSession,
+  deleteSession,
   getSessionRequests,
   approveRequest,
   rejectRequest,
+  uploadProfessorResponse,
+  requestReupload,
+  getFileUrl,
 } from "../utils/api";
 import "../styles/dashboard.css";
+import LogoASE from "../assets/Logo_ASE.png";
 
 export default function ProfessorDashboard() {
   const [sessions, setSessions] = useState([]);
@@ -21,9 +27,26 @@ export default function ProfessorDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [reuploadModal, setReuploadModal] = useState(null);
+  const [reuploadReason, setReuploadReason] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(null);
+
+  // Popup states
+  const [popup, setPopup] = useState({ show: false, type: 'info', message: '' });
+  const [confirmPopup, setConfirmPopup] = useState({ show: false, message: '', onConfirm: null });
+  const [deleteSessionId, setDeleteSessionId] = useState(null);
+
+  const showPopup = (message, type = 'error') => {
+    setPopup({ show: true, type, message });
+  };
+
+  const closePopup = () => {
+    setPopup({ show: false, type: 'info', message: '' });
+  };
 
   // Create session form
   const [sessionForm, setSessionForm] = useState({
@@ -69,13 +92,25 @@ export default function ProfessorDashboard() {
     e.preventDefault();
     try {
       setProcessing(true);
-      await createSession(
-        sessionForm.title,
-        sessionForm.description,
-        sessionForm.startDate,
-        sessionForm.endDate,
-        sessionForm.maxStudents
-      );
+      if (editingSession) {
+        await updateSession(
+          editingSession.id,
+          sessionForm.title,
+          sessionForm.description,
+          sessionForm.startDate,
+          sessionForm.endDate,
+          sessionForm.maxStudents
+        );
+        setEditingSession(null);
+      } else {
+        await createSession(
+          sessionForm.title,
+          sessionForm.description,
+          sessionForm.startDate,
+          sessionForm.endDate,
+          sessionForm.maxStudents
+        );
+      }
       setShowCreateModal(false);
       setSessionForm({
         title: "",
@@ -86,10 +121,43 @@ export default function ProfessorDashboard() {
       });
       fetchData();
     } catch (err) {
-      alert("Eroare: " + err.message);
+      showPopup("Eroare: " + err.message, 'error');
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleEditSession = (session) => {
+    setEditingSession(session);
+    setSessionForm({
+      title: session.title,
+      description: session.description || "",
+      startDate: new Date(session.startDate).toISOString().split("T")[0],
+      endDate: new Date(session.endDate).toISOString().split("T")[0],
+      maxStudents: session.maxStudents,
+    });
+    setShowCreateModal(true);
+  };
+
+  const handleDeleteSession = (sessionId) => {
+    setDeleteSessionId(sessionId);
+    setConfirmPopup({
+      show: true,
+      message: "Ești sigur că vrei să ștergi această sesiune? Toate cererile asociate vor fi șterse.",
+      onConfirm: async () => {
+        try {
+          setProcessing(true);
+          await deleteSession(sessionId);
+          fetchData();
+        } catch (err) {
+          showPopup("Eroare: " + err.message, 'error');
+        } finally {
+          setProcessing(false);
+          setConfirmPopup({ show: false, message: '', onConfirm: null });
+          setDeleteSessionId(null);
+        }
+      }
+    });
   };
 
   const handleApprove = async (requestId) => {
@@ -98,7 +166,7 @@ export default function ProfessorDashboard() {
       await approveRequest(requestId);
       fetchData();
     } catch (err) {
-      alert("Eroare: " + err.message);
+      showPopup("Eroare: " + err.message, 'error');
     } finally {
       setProcessing(false);
     }
@@ -106,7 +174,7 @@ export default function ProfessorDashboard() {
 
   const handleReject = async () => {
     if (!selectedRequest || !rejectionReason.trim()) {
-      alert("Te rugăm să introduci un motiv pentru respingere");
+      showPopup("Te rugăm să introduci un motiv pentru respingere", 'warning');
       return;
     }
     try {
@@ -116,7 +184,7 @@ export default function ProfessorDashboard() {
       setRejectionReason("");
       fetchData();
     } catch (err) {
-      alert("Eroare: " + err.message);
+      showPopup("Eroare: " + err.message, 'error');
     } finally {
       setProcessing(false);
     }
@@ -127,8 +195,49 @@ export default function ProfessorDashboard() {
     navigate("/login");
   };
 
+  const handleUploadResponse = async (requestId, file) => {
+    if (!file) return;
+    
+    try {
+      setUploadingFile(requestId);
+      await uploadProfessorResponse(requestId, file);
+      fetchData();
+    } catch (err) {
+      showPopup("Eroare la încărcarea fișierului: " + err.message, 'error');
+    } finally {
+      setUploadingFile(null);
+    }
+  };
+
+  const handleRequestReupload = async () => {
+    if (!reuploadModal || !reuploadReason.trim()) {
+      showPopup("Te rugăm să introduci un motiv pentru reupload", 'warning');
+      return;
+    }
+    try {
+      setProcessing(true);
+      await requestReupload(reuploadModal.id, reuploadReason);
+      setReuploadModal(null);
+      setReuploadReason("");
+      fetchData();
+    } catch (err) {
+      showPopup("Eroare: " + err.message, 'error');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const pendingRequests = allRequests.filter((r) => r.status === "pending");
   const approvedRequests = allRequests.filter((r) => r.status === "approved");
+  const waitingReuploadRequests = allRequests.filter((r) => r.status === "waiting_for_reupload");
+
+  // Verifică dacă există o sesiune activă (deschisă)
+  const now = new Date();
+  const hasActiveSession = sessions.some((session) => {
+    const startDate = new Date(session.startDate);
+    const endDate = new Date(session.endDate);
+    return now >= startDate && now <= endDate;
+  });
 
   if (loading) {
     return (
@@ -146,8 +255,11 @@ export default function ProfessorDashboard() {
       <header className="dashboard-header">
         <div className="dashboard-header-content">
           <div className="dashboard-header-left">
-            <h1>Dashboard Profesor</h1>
-            <p>{user?.firstName} {user?.lastName}</p>
+            <img src={LogoASE} alt="Logo ASE" className="header-logo" />
+            <div>
+              <h1>Dashboard Profesor</h1>
+              <p>{user?.firstName} {user?.lastName}</p>
+            </div>
           </div>
           <div className="dashboard-header-right">
             <button className="logout-btn" onClick={handleLogout}>
@@ -219,7 +331,12 @@ export default function ProfessorDashboard() {
         <div className="section-card">
           <div className="section-header">
             <h2>Sesiunile mele</h2>
-            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+            <button 
+              className={`btn ${hasActiveSession ? 'btn-disabled' : 'btn-primary'}`} 
+              onClick={() => !hasActiveSession && setShowCreateModal(true)}
+              disabled={hasActiveSession}
+              title={hasActiveSession ? 'Ai deja o sesiune activă. Nu poți crea o sesiune nouă.' : 'Creează o sesiune nouă'}
+            >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -243,15 +360,40 @@ export default function ProfessorDashboard() {
                         {new Date(session.startDate).toLocaleDateString("ro-RO")} - {new Date(session.endDate).toLocaleDateString("ro-RO")}
                       </p>
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <p className="font-medium">
-                        {session.approvedCount}/{session.maxStudents} locuri
-                      </p>
-                      <div className="progress-bar" style={{ width: "6rem" }}>
-                        <div
-                          className="progress-bar-fill"
-                          style={{ width: `${(session.approvedCount / session.maxStudents) * 100}%` }}
-                        />
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                      <div style={{ textAlign: "right" }}>
+                        <p className="font-medium">
+                          {session.approvedCount}/{session.maxStudents} locuri
+                        </p>
+                        <div className="progress-bar" style={{ width: "6rem" }}>
+                          <div
+                            className="progress-bar-fill"
+                            style={{ width: `${(session.approvedCount / session.maxStudents) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="item-card-actions">
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleEditSession(session)}
+                          title="Editează sesiunea"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleDeleteSession(session.id)}
+                          disabled={session.approvedCount > 0 || processing}
+                          title={session.approvedCount > 0 ? "Nu poți șterge sesiuni cu studenți acceptați" : "Șterge sesiunea"}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -334,13 +476,32 @@ export default function ProfessorDashboard() {
                     <div className="item-card-info">
                       <h3>{request.student.firstName} {request.student.lastName}</h3>
                       <p className="email">{request.student.email}</p>
-                      {request.signedCoordinationRequestFile && (
+                      
+                      {/* Student's signed file */}
+                      {request.signedCoordinationRequestFile ? (
                         <div className="file-uploaded">
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                             <polyline points="14 2 14 8 20 8" />
                           </svg>
-                          Fișier încărcat de student
+                          <a href={getFileUrl(request.signedCoordinationRequestFile)} target="_blank" rel="noopener noreferrer">
+                            Cerere semnată de student
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-muted">Studentul nu a încărcat încă cererea semnată</p>
+                      )}
+
+                      {/* Professor's response file */}
+                      {request.professorReviewFile && (
+                        <div className="file-uploaded professor-file">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                          <a href={getFileUrl(request.professorReviewFile)} target="_blank" rel="noopener noreferrer">
+                            Răspunsul tău
+                          </a>
                         </div>
                       )}
                     </div>
@@ -351,17 +512,93 @@ export default function ProfessorDashboard() {
                       Acceptat
                     </span>
                   </div>
+
+                  {/* Actions for approved requests with student file */}
+                  {request.signedCoordinationRequestFile && (
+                    <div className="item-card-footer">
+                      {/* Upload professor response */}
+                      {!request.professorReviewFile && (
+                        <div className="file-upload inline">
+                          <label className="btn btn-outline btn-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                            {uploadingFile === request.id ? "Se încarcă..." : "Încarcă răspuns"}
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              hidden
+                              disabled={uploadingFile === request.id}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUploadResponse(request.id, file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      )}
+                      
+                      {/* Request reupload */}
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => setReuploadModal(request)}
+                        disabled={processing}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4 1 10 7 10" />
+                          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                        Cere reupload
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Create Session Modal */}
+        {/* Waiting for Reupload Section */}
+        {waitingReuploadRequests.length > 0 && (
+          <div className="section-card">
+            <div className="section-header">
+              <h2>Așteptare reupload ({waitingReuploadRequests.length})</h2>
+            </div>
+            <div className="item-list">
+              {waitingReuploadRequests.map((request) => (
+                <div key={request.id} className="item-card">
+                  <div className="item-card-header">
+                    <div className="item-card-info">
+                      <h3>{request.student.firstName} {request.student.lastName}</h3>
+                      <p className="email">{request.student.email}</p>
+                      {request.reuploadReason && (
+                        <p className="message">Motiv: {request.reuploadReason}</p>
+                      )}
+                    </div>
+                    <span className="status-badge warning">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      Așteptare reupload
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Create/Edit Session Modal */}
         {showCreateModal && (
-          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-overlay" onClick={() => { setShowCreateModal(false); setEditingSession(null); }}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Creează sesiune nouă</h3>
+              <h3>{editingSession ? "Editează sesiunea" : "Creează sesiune nouă"}</h3>
               <form onSubmit={handleCreateSession}>
                 <div className="form-group">
                   <label htmlFor="title">Nume sesiune</label>
@@ -428,6 +665,7 @@ export default function ProfessorDashboard() {
                     className="btn btn-secondary"
                     onClick={() => {
                       setShowCreateModal(false);
+                      setEditingSession(null);
                       setSessionForm({
                         title: "",
                         description: "",
@@ -440,7 +678,7 @@ export default function ProfessorDashboard() {
                     Anulează
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={processing}>
-                    {processing ? "Se creează..." : "Creează sesiune"}
+                    {processing ? "Se procesează..." : (editingSession ? "Salvează modificările" : "Creează sesiune")}
                   </button>
                 </div>
               </form>
@@ -491,7 +729,133 @@ export default function ProfessorDashboard() {
             </div>
           </div>
         )}
+
+        {/* Reupload Request Modal */}
+        {reuploadModal && (
+          <div className="modal-overlay" onClick={() => setReuploadModal(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Cere reupload fișier</h3>
+              <div className="modal-info">
+                <p>
+                  Student: <strong>{reuploadModal.student.firstName} {reuploadModal.student.lastName}</strong>
+                </p>
+              </div>
+              <div className="form-group">
+                <label htmlFor="reuploadReason">Motiv reupload (obligatoriu)</label>
+                <textarea
+                  id="reuploadReason"
+                  value={reuploadReason}
+                  onChange={(e) => setReuploadReason(e.target.value)}
+                  placeholder="Explică de ce studentul trebuie să încarce din nou fișierul..."
+                  rows={4}
+                  style={{ resize: "none" }}
+                  required
+                />
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setReuploadModal(null);
+                    setReuploadReason("");
+                  }}
+                >
+                  Anulează
+                </button>
+                <button
+                  className="btn btn-warning"
+                  onClick={handleRequestReupload}
+                  disabled={!reuploadReason.trim() || processing}
+                >
+                  {processing ? "Se procesează..." : "Cere reupload"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Popup Message Modal */}
+        {popup.show && (
+          <div className="modal-overlay" onClick={closePopup}>
+            <div className="modal popup-modal" onClick={(e) => e.stopPropagation()}>
+              <div className={`popup-icon ${popup.type}`}>
+                {popup.type === 'error' && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                )}
+                {popup.type === 'warning' && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                )}
+                {popup.type === 'success' && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                )}
+                {popup.type === 'info' && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                )}
+              </div>
+              <p className="popup-message">{popup.message}</p>
+              <div className="modal-actions">
+                <button className="btn btn-primary" onClick={closePopup}>
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirm Popup Modal */}
+        {confirmPopup.show && (
+          <div className="modal-overlay">
+            <div className="modal popup-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="popup-icon warning">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <p className="popup-message">{confirmPopup.message}</p>
+              <div className="modal-actions">
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    setConfirmPopup({ show: false, message: '', onConfirm: null });
+                    setDeleteSessionId(null);
+                  }}
+                >
+                  Anulează
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  onClick={confirmPopup.onConfirm}
+                  disabled={processing}
+                >
+                  {processing ? "Se procesează..." : "Da, șterge"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Footer */}
+      <footer className="dashboard-footer">
+        <p>© 2026 Toate drepturile rezervate - Chisega Eduard și Buzatoiu Andrei</p>
+      </footer>
     </div>
   );
 }

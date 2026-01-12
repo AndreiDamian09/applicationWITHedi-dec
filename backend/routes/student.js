@@ -1,5 +1,6 @@
 const express = require("express");
 const { verifyToken, isStudent } = require("../middleware/auth");
+const upload = require("../middleware/upload");
 const { RegistrationSession, DissertationRequest, User } = require("../models");
 const { Op } = require("sequelize");
 
@@ -207,6 +208,82 @@ router.get("/requests/:requestId", verifyToken, isStudent, async (req, res) => {
   } catch (error) {
     console.error("Get request error:", error);
     res.status(500).json({ error: "Failed to retrieve request" });
+  }
+});
+
+/**
+ * Upload signed coordination request file
+ * POST /api/student/requests/:requestId/upload
+ * File: signedFile (PDF)
+ */
+router.post("/requests/:requestId/upload", verifyToken, isStudent, upload.single("signedFile"), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: "PDF file is required" });
+    }
+
+    const request = await DissertationRequest.findOne({
+      where: { id: requestId, studentId: req.userId },
+    });
+
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Can only upload for approved or waiting_for_reupload requests
+    if (request.status !== "approved" && request.status !== "waiting_for_reupload") {
+      return res.status(400).json({ 
+        error: "Can only upload file for approved or reupload-requested requests" 
+      });
+    }
+
+    // Save file and update status back to approved if was waiting_for_reupload
+    request.signedCoordinationRequestFile = req.file.filename;
+    if (request.status === "waiting_for_reupload") {
+      request.status = "approved";
+      request.reuploadReason = null; // Clear the reupload reason
+    }
+    await request.save();
+
+    res.json({
+      message: "Signed file uploaded successfully",
+      request,
+    });
+  } catch (error) {
+    console.error("Upload file error:", error);
+    res.status(500).json({ error: "Failed to upload file" });
+  }
+});
+
+/**
+ * Download professor's response file
+ * GET /api/student/requests/:requestId/professor-file
+ */
+router.get("/requests/:requestId/professor-file", verifyToken, isStudent, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const request = await DissertationRequest.findOne({
+      where: { id: requestId, studentId: req.userId },
+    });
+
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    if (!request.professorReviewFile) {
+      return res.status(404).json({ error: "Professor has not uploaded a response file yet" });
+    }
+
+    res.json({
+      filename: request.professorReviewFile,
+      downloadUrl: `/uploads/${request.professorReviewFile}`,
+    });
+  } catch (error) {
+    console.error("Get professor file error:", error);
+    res.status(500).json({ error: "Failed to get professor file" });
   }
 });
 

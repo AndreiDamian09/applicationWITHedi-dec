@@ -25,6 +25,9 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Serve template files (PDF templates for download)
+app.use("/templates", express.static(path.join(__dirname, "templates")));
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/professor", professorRoutes);

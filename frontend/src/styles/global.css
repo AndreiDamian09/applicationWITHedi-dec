@@ -162,6 +162,17 @@ a:hover {
   cursor: not-allowed;
 }
 
+.btn-disabled {
+  background-color: #9ca3af !important;
+  color: #e5e7eb !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+.btn-disabled:hover {
+  background-color: #9ca3af !important;
+}
+
 .btn-primary {
   background-color: var(--primary);
   color: white;
@@ -196,6 +207,25 @@ a:hover {
 
 .btn-danger:hover:not(:disabled) {
   background-color: #b91c1c;
+}
+
+.btn-warning {
+  background-color: var(--warning);
+  color: white;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background-color: #a16207;
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background-color: var(--primary-bg);
 }
 
 .btn-sm {
@@ -324,6 +354,12 @@ a:hover {
 .status-badge.rejected {
   background-color: var(--danger-bg);
   color: var(--danger-text);
+}
+
+.status-badge.warning,
+.status-badge.waiting_for_reupload {
+  background-color: #fef3c7;
+  color: #92400e;
 }
 
 .status-badge.blocked {
