@@ -1,5 +1,5 @@
 const API_BASE_URL =
- "https://alene-acanthine-ironically.ngrok-free.dev";
+ "https://alene-acanthine-ironically.ngrok-free.dev/api";
 
 export const apiCall = async (endpoint, options = {}) => {
   const token = localStorage.getItem("token");
